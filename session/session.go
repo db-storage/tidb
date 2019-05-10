@@ -964,11 +964,10 @@ func (s *session) Execute(ctx context.Context, sql string) (recordSets []sqlexec
 }
 
 const (
-	// TiDBMaxExecutionTime is currently used for selection Statement only
-	TiDBMaxExecutionTime = "max_execution_time"
+	// MaxExecutionTime is currently used for selection Statement only
+	MaxExecutionTime = "max_execution_time"
 )
 
-//exeutionHints contains only maxExecutionTime now, but there maybe more in the future
 type exeutionHints struct {
 	maxExecutionTime uint64
 }
@@ -977,7 +976,7 @@ func (s *session) getExecutionHints(hints []*ast.TableOptimizerHint) (execHints 
 	execHints = &exeutionHints{maxExecutionTime: 0}
 	for _, hint := range hints {
 		switch hint.HintName.L {
-		case TiDBMaxExecutionTime:
+		case MaxExecutionTime:
 			execHints.maxExecutionTime = hint.MaxExecutionTime
 		default:
 		}

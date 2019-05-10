@@ -1302,9 +1302,9 @@ func (cc *clientConn) writeChunks(ctx context.Context, rs ResultSet, binary bool
 		failpoint.Inject("SleepInwriteChunks", func(val failpoint.Value) {
 			time.Sleep(time.Duration(val.(int)) * time.Millisecond)
 		})
+		//MaxExecDuration() return 0 if there is no limit
 		if rs.MaxExecDuration().Nanoseconds() > 0 &&
 			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
-			logutil.Logger(ctx).Warn("1907", zap.Int64("timeout:", rs.MaxExecDuration().Nanoseconds()))
 			return errors.New("Query execution was interrupted, max_execution_time exceeded")
 		}
 
