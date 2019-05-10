@@ -966,6 +966,55 @@ func (s *session) Execute(ctx context.Context, sql string) (recordSets []sqlexec
 	return
 }
 
+const (
+	invalidExecutionTime = uint64(0)
+	// TiDBMaxExecutionTime is currently used for selection Statement only
+	TiDBMaxExecutionTime = "MAX_EXECUTION_TIME"
+)
+
+type exeutionHints struct {
+	maxExecutionTime uint64
+}
+
+func (s *session) getExecutionHints(hints []*ast.TableOptimizerHint) (execHints *exeutionHints) {
+	execHints = &exeutionHints{maxExecutionTime: invalidExecutionTime}
+	for _, hint := range hints {
+		switch hint.HintName.L {
+		case TiDBMaxExecutionTime:
+			execHints.maxExecutionTime = hint.MaxExecutionTime
+		default:
+		}
+	}
+	return execHints
+}
+
+//maybeChangeCtxWithTimeout returns new context and valid cancel func when context has been changed
+//otherwise, the execCtx is the same as ctx, cancel is nil
+func (s *session) tryChangeStmtTimeout(stmtNode ast.StmtNode) {
+	//var cancel context.CancelFunc
+	switch stmtNode.(type) {
+	case *ast.SelectStmt:
+		sel := stmtNode.(*ast.SelectStmt)
+		execHints := s.getExecutionHints(sel.TableHints)
+		var waitSeconds uint64 = invalidExecutionTime
+		if execHints.maxExecutionTime != invalidExecutionTime {
+			waitSeconds = execHints.maxExecutionTime
+		} else if s.GetSessionVars().MaxExecutionTime != invalidExecutionTime {
+			waitSeconds = s.GetSessionVars().MaxExecutionTime
+		} else if str, ok := s.GetSessionVars().GetSystemVar(variable.MaxExecutionTime); ok {
+			t, err := strconv.ParseUint(str, 10, 64)
+			if err == nil {
+				waitSeconds = t
+			}
+		}
+		if waitSeconds != invalidExecutionTime {
+			//s.GetSessionVars().StmtCtx.timeout = time.Duration(waitSeconds) * time.Second
+		}
+	default:
+	}
+	return
+}
+
 func (s *session) execute(ctx context.Context, sql string) (recordSets []sqlexec.RecordSet, err error) {
 	s.PrepareTxnCtx(ctx)
 	connID := s.sessionVars.ConnectionID
@@ -995,6 +1044,7 @@ func (s *session) execute(ctx context.Context, sql string) (recordSets []sqlexec
 
 	var tempStmtNodes []ast.StmtNode
 	compiler := executor.Compiler{Ctx: s}
+
 	for idx, stmtNode := range stmtNodes {
 		s.PrepareTxnCtx(ctx)
 
@@ -1029,6 +1079,8 @@ func (s *session) execute(ctx context.Context, sql string) (recordSets []sqlexec
 			sessionExecuteCompileDurationGeneral.Observe(time.Since(startTS).Seconds())
 		}
 		s.currentPlan = stmt.Plan
+		//TODO: will StmtCtx be changed by the loop? will there be many stmtNodes?
+		s.tryChangeStmtTimeout(stmtNode)
 
 		// Step3: Execute the physical plan.
 		if recordSets, err = s.executeStatement(ctx, connID, stmtNode, stmt, recordSets); err != nil {
