@@ -1183,6 +1183,7 @@ func (cc *clientConn) handleQuery(ctx context.Context, sql string) (err error) {
 	cc.mu.Unlock()
 
 	if rs != nil {
+		//TODO: set timer according to cc.ctx.GetSessionVars().StmtCtx.timeout, and KillConn on timeout
 		if len(rs) == 1 {
 			err = cc.writeResultset(ctx, rs[0], false, 0, 0)
 		} else {
