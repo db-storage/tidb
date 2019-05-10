@@ -356,6 +356,8 @@ type SessionVars struct {
 
 	// EnableFastAnalyze indicates whether to take fast analyze.
 	EnableFastAnalyze bool
+
+	MaxExecutionTime uint64
 }
 
 // ConnectionInfo present connection used by audit.
@@ -665,6 +667,8 @@ func (s *SessionVars) SetSystemVar(name string, val string) error {
 		if isAutocommit {
 			s.SetStatusFlag(mysql.ServerStatusInTrans, false)
 		}
+	case MaxExecutionTime:
+		s.MaxExecutionTime = uint64(tidbOptInt64(val, 0))
 	case TiDBSkipUTF8Check:
 		s.SkipUTF8Check = TiDBOptOn(val)
 	case TiDBOptAggPushDown:
@@ -798,6 +802,7 @@ const (
 	TxnIsolation         = "tx_isolation"
 	TransactionIsolation = "transaction_isolation"
 	TxnIsolationOneShot  = "tx_isolation_one_shot"
+	MaxExecutionTime     = "max_execution_time"
 )
 
 // these variables are useless for TiDB, but still need to validate their values for some compatible issues.

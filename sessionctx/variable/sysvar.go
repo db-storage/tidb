@@ -161,6 +161,7 @@ var defaultSysVars = []*SysVar{
 	{ScopeNone, "performance_schema_max_file_handles", "32768"},
 	{ScopeSession, "transaction_allow_batching", ""},
 	{ScopeGlobal | ScopeSession, SQLModeVar, mysql.DefaultSQLMode},
+	{ScopeGlobal | ScopeSession, MaxExecutionTime, "0"},
 	{ScopeNone, "performance_schema_max_statement_classes", "168"},
 	{ScopeGlobal, "server_id", "0"},
 	{ScopeGlobal, "innodb_flushing_avg_loops", "30"},
