@@ -243,34 +243,34 @@ func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 	}
 
 	//handleQuery will WriteOK even there is no data output, which may cause panic in packetIO.writePacket
-	_, err = se.Execute(context.Background(), "use mysql;")
+	_, err = se.Execute(context.Background(), "use test;")
 	c.Assert(err, IsNil)
-	_, err = se.Execute(context.Background(), "CREATE TABLE test2 (id bigint PRIMARY KEY,  age int)")
+	_, err = se.Execute(context.Background(), "CREATE TABLE testTable2 (id bigint PRIMARY KEY,  age int)")
 	for i := 0; i < 100000; i++ {
-		str := fmt.Sprintf("insert into test2 values(%d, %d)", i, i%80)
+		str := fmt.Sprintf("insert into testTable2 values(%d, %d)", i, i%80)
 		_, err = se.Execute(context.Background(), str)
 		c.Assert(err, IsNil)
 	}
-	_, err = se.Execute(context.Background(), "select  * FROM test2;")
+	_, err = se.Execute(context.Background(), "select  * FROM testTable2;")
 	c.Assert(err, IsNil)
 
 	//100ms
-	_, err = se.Execute(context.Background(), "set @@max_execution_time = 100;")
+	_, err = se.Execute(context.Background(), "set @@max_execution_time = 5;")
 	c.Assert(err, IsNil)
 
-	err = cc.handleQuery(context.Background(), "select  * FROM test2;")
+	err = cc.handleQuery(context.Background(), "select  * FROM testTable2;")
 	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
+	c.Assert(err.Error(), Equals, errors.New(mysql.MySQLErrName[mysql.ErrMaxExecTimeExceeded]).Error())
 
 	_, err = se.Execute(context.Background(), "set @@max_execution_time = 0;")
 	c.Assert(err, IsNil)
 
-	err = cc.handleQuery(context.Background(), "select  * FROM test2;")
+	err = cc.handleQuery(context.Background(), "select  * FROM testTable2;")
 	c.Assert(err, IsNil)
 
-	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100)*/ * FROM test2;")
+	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100)*/ * FROM testTable2;")
 	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
+	c.Assert(err.Error(), Equals, errors.New(mysql.MySQLErrName[mysql.ErrMaxExecTimeExceeded]).Error())
 
 	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/SleepInwriteChunks"), IsNil)
 	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/FakeClientConn"), IsNil)
