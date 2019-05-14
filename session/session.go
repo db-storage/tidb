@@ -977,7 +977,7 @@ type exeutionHints struct {
 func (s *session) getExecutionHints(hints []*ast.TableOptimizerHint) (execHints *exeutionHints) {
 	execHints = &exeutionHints{maxExecutionTime: invalidExecutionTime}
 	for _, hint := range hints {
-		switch hint.HintName.L {
+		switch hint.HintName.O {
 		case TiDBMaxExecutionTime:
 			execHints.maxExecutionTime = hint.MaxExecutionTime
 		default:
