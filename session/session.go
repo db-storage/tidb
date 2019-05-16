@@ -962,17 +962,17 @@ func (s *session) Execute(ctx context.Context, sql string) (recordSets []sqlexec
 }
 
 const (
-	invalidTimeOut = uint64(0)
 	// TiDBMaxExecutionTime is currently used for selection Statement only
 	TiDBMaxExecutionTime = "max_execution_time"
 )
 
+//exeutionHints contains only maxExecutionTime now, but there maybe more in the future
 type exeutionHints struct {
 	maxExecutionTime uint64
 }
 
 func (s *session) getExecutionHints(hints []*ast.TableOptimizerHint) (execHints *exeutionHints) {
-	execHints = &exeutionHints{maxExecutionTime: invalidTimeOut}
+	execHints = &exeutionHints{maxExecutionTime: 0}
 	for _, hint := range hints {
 		switch hint.HintName.L {
 		case TiDBMaxExecutionTime:
@@ -983,16 +983,16 @@ func (s *session) getExecutionHints(hints []*ast.TableOptimizerHint) (execHints 
 	return execHints
 }
 
-//maybeChangeCtxWithTimeout returns the timeout value of a stmt, 0 if there is no timeout value.
+//getStmtMaxExecTimeMS returns the timeout value of a stmt, 0 if there is no timeout value.
 func (s *session) getStmtMaxExecTimeMS(stmtNode ast.StmtNode) uint64 {
-	var timeOutMS uint64 = invalidTimeOut
+	var timeOutMS uint64 = 0
 	switch stmtNode.(type) {
 	case *ast.SelectStmt:
 		sel := stmtNode.(*ast.SelectStmt)
 		execHints := s.getExecutionHints(sel.TableHints)
-		if execHints.maxExecutionTime != invalidTimeOut {
+		if execHints.maxExecutionTime != 0 {
 			timeOutMS = execHints.maxExecutionTime
-		} else if s.GetSessionVars().MaxExecutionTime != invalidTimeOut {
+		} else if s.GetSessionVars().MaxExecutionTime != 0 {
 			timeOutMS = s.GetSessionVars().MaxExecutionTime
 		} else if str, ok := s.GetSessionVars().GetSystemVar(variable.MaxExecutionTime); ok {
 			t, err := strconv.ParseUint(str, 10, 64)
@@ -1078,7 +1078,7 @@ func (s *session) execute(ctx context.Context, sql string) (recordSets []sqlexec
 		}
 		if rs != nil {
 			rs.SetMaxExecDuration(time.Duration(maxExecTimeMS) * time.Millisecond)
-			rs.SetStartExecTime(time.Now())
+			rs.SetStartExecTime(startTS)
 			recordSets = append(recordSets, rs)
 		}
 	}

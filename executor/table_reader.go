@@ -237,7 +237,6 @@ func (tr *tableResultHandler) nextRaw(ctx context.Context) (data []byte, err err
 
 func (tr *tableResultHandler) Close() error {
 	err := closeAll(tr.optionalResult, tr.result)
-	//TODO: uncomment this later
-	//tr.optionalResult, tr.result = nil, nil
+	tr.optionalResult, tr.result = nil, nil
 	return err
 }
