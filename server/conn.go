@@ -1175,8 +1175,8 @@ func (cc *clientConn) handleQuery(ctx context.Context, sql string) (err error) {
 		return errors.New("killed by another connection")
 	}
 	cc.mu.Unlock()
+
 	if rs != nil {
-		//TODO: set timer according to cc.ctx.GetSessionVars().StmtCtx.timeout, and KillConn on timeout
 		if len(rs) == 1 {
 			err = cc.writeResultset(ctx, rs[0], false, 0, 0)
 		} else {
@@ -1293,6 +1293,14 @@ func (cc *clientConn) writeChunks(ctx context.Context, rs ResultSet, binary bool
 	req := rs.NewRecordBatch()
 	gotColumnInfo := false
 	for {
+		//TODO: remove this later
+		time.Sleep(100 * time.Millisecond)
+		if rs.MaxExecDuration().Nanoseconds() > 0 &&
+			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
+			logutil.Logger(ctx).Warn("1907", zap.Int64("timeout:", rs.MaxExecDuration().Nanoseconds()))
+			return errors.New("1907: Query execution was interrupted, max_execution_time exceeded")
+		}
+
 		// Here server.tidbResultSet implements Next method.
 		err := rs.Next(ctx, req)
 		if err != nil {
@@ -1340,6 +1348,14 @@ func (cc *clientConn) writeChunksWithFetchSize(ctx context.Context, rs ResultSet
 	// if fetchedRows is not enough, getting data from recordSet.
 	req := rs.NewRecordBatch()
 	for len(fetchedRows) < fetchSize {
+		//TODO: remove this later
+		time.Sleep(100 * time.Millisecond)
+		if rs.MaxExecDuration().Nanoseconds() > 0 &&
+			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
+			logutil.Logger(ctx).Warn("1907", zap.Int64("timeout:", rs.MaxExecDuration().Nanoseconds()))
+			return errors.New("1907: Query execution was interrupted, max_execution_time exceeded")
+		}
+
 		// Here server.tidbResultSet implements Next method.
 		err := rs.Next(ctx, req)
 		if err != nil {

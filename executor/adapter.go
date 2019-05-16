@@ -53,11 +53,29 @@ type processinfoSetter interface {
 
 // recordSet wraps an executor, implements sqlexec.RecordSet interface
 type recordSet struct {
-	fields     []*ast.ResultField
-	executor   Executor
-	stmt       *ExecStmt
-	lastErr    error
-	txnStartTS uint64
+	fields          []*ast.ResultField
+	executor        Executor
+	stmt            *ExecStmt
+	lastErr         error
+	txnStartTS      uint64
+	maxExecDuration time.Duration
+	startExecTime   time.Time
+}
+
+func (a *recordSet) SetMaxExecDuration(d time.Duration) {
+	a.maxExecDuration = d
+}
+
+func (a *recordSet) MaxExecDuration() time.Duration {
+	return a.maxExecDuration
+}
+
+func (a *recordSet) SetStartExecTime(t time.Time) {
+	a.startExecTime = t
+}
+
+func (a *recordSet) StartExecTime() time.Time {
+	return a.startExecTime
 }
 
 func (a *recordSet) Fields() []*ast.ResultField {
