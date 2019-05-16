@@ -1298,12 +1298,10 @@ func (cc *clientConn) writeChunks(ctx context.Context, rs ResultSet, binary bool
 	req := rs.NewRecordBatch()
 	gotColumnInfo := false
 	for {
-		//TODO: remove this later
-		time.Sleep(100 * time.Millisecond)
 		if rs.MaxExecDuration().Nanoseconds() > 0 &&
 			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
 			logutil.Logger(ctx).Warn("1907", zap.Int64("timeout:", rs.MaxExecDuration().Nanoseconds()))
-			return errors.New("1907: Query execution was interrupted, max_execution_time exceeded")
+			return errors.New("Query execution was interrupted, max_execution_time exceeded")
 		}
 
 		// Here server.tidbResultSet implements Next method.
@@ -1353,12 +1351,9 @@ func (cc *clientConn) writeChunksWithFetchSize(ctx context.Context, rs ResultSet
 	// if fetchedRows is not enough, getting data from recordSet.
 	req := rs.NewRecordBatch()
 	for len(fetchedRows) < fetchSize {
-		//TODO: remove this later
-		time.Sleep(100 * time.Millisecond)
 		if rs.MaxExecDuration().Nanoseconds() > 0 &&
 			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
-			logutil.Logger(ctx).Warn("1907", zap.Int64("timeout:", rs.MaxExecDuration().Nanoseconds()))
-			return errors.New("1907: Query execution was interrupted, max_execution_time exceeded")
+			return errors.New("Query execution was interrupted, max_execution_time exceeded")
 		}
 
 		// Here server.tidbResultSet implements Next method.
