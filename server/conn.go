@@ -51,6 +51,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/pingcap/errors"
+	"github.com/pingcap/failpoint"
 	"github.com/pingcap/parser/auth"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/parser/terror"
@@ -1293,6 +1294,9 @@ func (cc *clientConn) writeChunks(ctx context.Context, rs ResultSet, binary bool
 	req := rs.NewRecordBatch()
 	gotColumnInfo := false
 	for {
+		failpoint.Inject("SleepInwriteChunks", func(val failpoint.Value) {
+			time.Sleep(time.Duration(val.(int)) * time.Millisecond)
+		})
 		if rs.MaxExecDuration().Nanoseconds() > 0 &&
 			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
 			logutil.Logger(ctx).Warn("1907", zap.Int64("timeout:", rs.MaxExecDuration().Nanoseconds()))
@@ -1346,6 +1350,9 @@ func (cc *clientConn) writeChunksWithFetchSize(ctx context.Context, rs ResultSet
 	// if fetchedRows is not enough, getting data from recordSet.
 	req := rs.NewRecordBatch()
 	for len(fetchedRows) < fetchSize {
+		failpoint.Inject("SleepInwriteChunksWithFetchSize", func(val failpoint.Value) {
+			time.Sleep(time.Duration(val.(int)) * time.Microsecond)
+		})
 		if rs.MaxExecDuration().Nanoseconds() > 0 &&
 			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
 			return errors.New("Query execution was interrupted, max_execution_time exceeded")

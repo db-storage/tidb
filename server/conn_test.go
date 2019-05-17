@@ -20,11 +20,14 @@ import (
 	"encoding/binary"
 
 	. "github.com/pingcap/check"
+	"github.com/pingcap/errors"
+	"github.com/pingcap/failpoint"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/domain"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/session"
 	"github.com/pingcap/tidb/store/mockstore"
+	"github.com/pingcap/tidb/util/arena"
 )
 
 type ConnTestSuite struct {
@@ -206,4 +209,63 @@ func mapBelong(m1, m2 map[string]string) bool {
 		}
 	}
 	return true
+}
+
+func execStmt(c *C, cc *clientConn, se session.Session, sql string) error {
+	stmtID, _, _, err := se.PrepareStmt(sql)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	_, err = se.ExecutePreparedStmt(context.Background(), stmtID)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	err = se.DropPreparedStmt(stmtID)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
+func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
+	c.Parallel()
+	var err error
+	ts.store, err = mockstore.NewMockTikvStore()
+	c.Assert(err, IsNil)
+	ts.dom, err = session.BootstrapSession(ts.store)
+	c.Assert(err, IsNil)
+	se, err := session.CreateSession4Test(ts.store)
+	c.Assert(err, IsNil)
+	tc := &TiDBContext{
+		session: se,
+		stmts:   make(map[int]*TiDBStatement),
+	}
+	cc := &clientConn{
+		connectionID: 1,
+		server: &Server{
+			capability: defaultCapability,
+		},
+		ctx:   tc,
+		alloc: arena.NewAllocator(32 * 1024),
+	}
+	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunksWithFetchSize", "return(200)"), IsNil)
+	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunks", "return(200)"), IsNil)
+
+	c.Assert(execStmt(c, cc, se, "use mysql;"), IsNil)
+	c.Assert(execStmt(c, cc, se, "begin;"), IsNil)
+	err = execStmt(c, cc, se, "select * FROM tidb;")
+	err = execStmt(c, cc, se, "set @@max_execution_time = 100;")
+	c.Assert(err, IsNil)
+	//err = execStmt(c, cc, se, "select * FROM tidb;")
+	//err = execStmt(c, cc, se, "select /*+ MAX_EXECUTION_TIME(100)*/ * FROM tidb;")
+	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100) */ * FROM tidb;")
+
+	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
+	err = execStmt(c, cc, se, "select /*+ MAX_EXECUTION_TIME(2000)*/ * FROM tidb;")
+	//err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100) */ * FROM tidb;")
+	c.Assert(err, IsNil)
+	c.Assert(execStmt(c, cc, se, "commit;"), IsNil)
+
+	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/SleepInwriteChunks"), IsNil)
+	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/SleepInwriteChunksWithFetchSize"), IsNil)
 }
