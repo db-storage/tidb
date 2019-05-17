@@ -214,15 +214,15 @@ func mapBelong(m1, m2 map[string]string) bool {
 func execStmt(c *C, se session.Session, sql string) error {
 	stmtID, _, _, err := se.PrepareStmt(sql)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 	_, err = se.ExecutePreparedStmt(context.Background(), stmtID)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 	err = se.DropPreparedStmt(stmtID)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 	return nil
 }
@@ -236,6 +236,7 @@ func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 	c.Assert(err, IsNil)
 	se, err := session.CreateSession4Test(ts.store)
 	c.Assert(err, IsNil)
+
 	tc := &TiDBContext{
 		session: se,
 		stmts:   make(map[int]*TiDBStatement),
@@ -248,20 +249,23 @@ func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 		ctx:   tc,
 		alloc: arena.NewAllocator(32 * 1024),
 	}
-	//Inject 200ms delay before each call to Next()
+	//Inject 200ms delay before each call of Next()
 	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunksWithFetchSize", "return(200)"), IsNil)
 	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunks", "return(200)"), IsNil)
 
+	//handleQuery will WriteOK even there is no data output, which may cause panic in packetIO.writePacket
 	c.Assert(execStmt(c, se, "use mysql;"), IsNil)
 	c.Assert(execStmt(c, se, "begin;"), IsNil)
 	err = execStmt(c, se, "set @@max_execution_time = 100;")
 	c.Assert(err, IsNil)
-
-	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100) */ * FROM tidb;")
+	//session's max_execution_time has been set before
+	err = cc.handleQuery(context.Background(), "select  * FROM tidb;")
 	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
 
-	err = execStmt(c, se, "select /*+ MAX_EXECUTION_TIME(2000)*/ * FROM tidb;")
-	c.Assert(err, IsNil)
+	//Catch error returned by handleQuery, execStmt won't return the error we wanted(prepared stmt)
+	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100)*/ * FROM tidb;")
+	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
+
 	c.Assert(execStmt(c, se, "commit;"), IsNil)
 
 	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/SleepInwriteChunks"), IsNil)
