@@ -233,6 +233,7 @@ func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 		ctx:   tc,
 		alloc: arena.NewAllocator(32 * 1024),
 	}
+
 	//Inject 200ms delay before each call of Next()
 	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunks", "return(200)"), IsNil)
 
