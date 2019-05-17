@@ -2657,11 +2657,8 @@ func (s *testSessionSuite) TestMaxExeucteTime(c *C) {
 	tk.MustQuery("select @@global.MAX_EXECUTION_TIME;").Check(testkit.Rows("300"))
 	tk.MustQuery("select @@MAX_EXECUTION_TIME;").Check(testkit.Rows("150"))
 
-	//TODO: use failpoint to sleep and cause timeout error
-
 	tk.MustExec("set @@global.MAX_EXECUTION_TIME = 0;")
 	tk.MustExec("set @@MAX_EXECUTION_TIME = 0;")
 	tk.MustExec("commit")
 	tk.MustExec("drop table if exists MaxExecTime;")
-
 }
