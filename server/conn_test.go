@@ -211,7 +211,7 @@ func mapBelong(m1, m2 map[string]string) bool {
 	return true
 }
 
-func execStmt(c *C, cc *clientConn, se session.Session, sql string) error {
+func execStmt(c *C, se session.Session, sql string) error {
 	stmtID, _, _, err := se.PrepareStmt(sql)
 	if err != nil {
 		return errors.Trace(err)
@@ -248,23 +248,21 @@ func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 		ctx:   tc,
 		alloc: arena.NewAllocator(32 * 1024),
 	}
+	//Inject 200ms delay before each call to Next()
 	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunksWithFetchSize", "return(200)"), IsNil)
 	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunks", "return(200)"), IsNil)
 
-	c.Assert(execStmt(c, cc, se, "use mysql;"), IsNil)
-	c.Assert(execStmt(c, cc, se, "begin;"), IsNil)
-	err = execStmt(c, cc, se, "select * FROM tidb;")
-	err = execStmt(c, cc, se, "set @@max_execution_time = 100;")
+	c.Assert(execStmt(c, se, "use mysql;"), IsNil)
+	c.Assert(execStmt(c, se, "begin;"), IsNil)
+	err = execStmt(c, se, "set @@max_execution_time = 100;")
 	c.Assert(err, IsNil)
-	//err = execStmt(c, cc, se, "select * FROM tidb;")
-	//err = execStmt(c, cc, se, "select /*+ MAX_EXECUTION_TIME(100)*/ * FROM tidb;")
-	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100) */ * FROM tidb;")
 
+	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100) */ * FROM tidb;")
 	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
-	err = execStmt(c, cc, se, "select /*+ MAX_EXECUTION_TIME(2000)*/ * FROM tidb;")
-	//err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100) */ * FROM tidb;")
+
+	err = execStmt(c, se, "select /*+ MAX_EXECUTION_TIME(2000)*/ * FROM tidb;")
 	c.Assert(err, IsNil)
-	c.Assert(execStmt(c, cc, se, "commit;"), IsNil)
+	c.Assert(execStmt(c, se, "commit;"), IsNil)
 
 	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/SleepInwriteChunks"), IsNil)
 	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/SleepInwriteChunksWithFetchSize"), IsNil)
