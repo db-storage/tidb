@@ -240,6 +240,13 @@ func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 	//handleQuery will WriteOK even there is no data output, which may cause panic in packetIO.writePacket
 	_, err = se.Execute(context.Background(), "use mysql;")
 	c.Assert(err, IsNil)
+
+	_, err = se.Execute(context.Background(), "select  * FROM tidb;")
+	c.Assert(err, IsNil)
+
+	_, err = se.Execute(context.Background(), "set @@max_execution_time = 100;")
+	c.Assert(err, IsNil)
+
 	//session's max_execution_time has been set before
 	err = cc.handleQuery(context.Background(), "select  * FROM tidb;")
 	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
