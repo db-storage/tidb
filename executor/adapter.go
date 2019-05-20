@@ -303,10 +303,12 @@ func (a *ExecStmt) Exec(ctx context.Context) (sqlexec.RecordSet, error) {
 }
 
 type chunkRowRecordSet struct {
-	rows   []chunk.Row
-	idx    int
-	fields []*ast.ResultField
-	e      Executor
+	rows            []chunk.Row
+	idx             int
+	fields          []*ast.ResultField
+	e               Executor
+	maxExecDuration time.Duration
+	startExecTime   time.Time
 }
 
 func (c *chunkRowRecordSet) Fields() []*ast.ResultField {
@@ -329,6 +331,22 @@ func (c *chunkRowRecordSet) NewRecordBatch() *chunk.RecordBatch {
 
 func (c *chunkRowRecordSet) Close() error {
 	return nil
+}
+
+func (c *chunkRowRecordSet) SetMaxExecDuration(d time.Duration) {
+	c.maxExecDuration = d
+}
+
+func (c *chunkRowRecordSet) MaxExecDuration() time.Duration {
+	return c.maxExecDuration
+}
+
+func (c *chunkRowRecordSet) SetStartExecTime(t time.Time) {
+	c.startExecTime = t
+}
+
+func (c *chunkRowRecordSet) StartExecTime() time.Time {
+	return c.startExecTime
 }
 
 func (a *ExecStmt) handlePessimisticSelectForUpdate(ctx context.Context, e Executor) (sqlexec.RecordSet, error) {
