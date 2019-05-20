@@ -1355,9 +1355,6 @@ func (cc *clientConn) writeChunksWithFetchSize(ctx context.Context, rs ResultSet
 	// if fetchedRows is not enough, getting data from recordSet.
 	req := rs.NewRecordBatch()
 	for len(fetchedRows) < fetchSize {
-		failpoint.Inject("SleepInwriteChunksWithFetchSize", func(val failpoint.Value) {
-			time.Sleep(time.Duration(val.(int)) * time.Microsecond)
-		})
 		if rs.MaxExecDuration().Nanoseconds() > 0 &&
 			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
 			return errors.New("Query execution was interrupted, max_execution_time exceeded")

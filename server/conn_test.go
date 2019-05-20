@@ -211,22 +211,6 @@ func mapBelong(m1, m2 map[string]string) bool {
 	return true
 }
 
-func execStmt(c *C, se session.Session, sql string) error {
-	stmtID, _, _, err := se.PrepareStmt(sql)
-	if err != nil {
-		return err
-	}
-	_, err = se.ExecutePreparedStmt(context.Background(), stmtID)
-	if err != nil {
-		return err
-	}
-	err = se.DropPreparedStmt(stmtID)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 	c.Parallel()
 	var err error
@@ -250,14 +234,18 @@ func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 		alloc: arena.NewAllocator(32 * 1024),
 	}
 	//Inject 200ms delay before each call of Next()
-	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunksWithFetchSize", "return(200)"), IsNil)
 	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunks", "return(200)"), IsNil)
 
 	//handleQuery will WriteOK even there is no data output, which may cause panic in packetIO.writePacket
-	c.Assert(execStmt(c, se, "use mysql;"), IsNil)
-	c.Assert(execStmt(c, se, "begin;"), IsNil)
-	err = execStmt(c, se, "set @@max_execution_time = 100;")
+	_, err = se.Execute(context.Background(), "use mysql;")
 	c.Assert(err, IsNil)
+
+	_, err = se.Execute(context.Background(), "select  * FROM tidb;")
+	c.Assert(err, IsNil)
+
+	_, err = se.Execute(context.Background(), "set @@max_execution_time = 100;")
+	c.Assert(err, IsNil)
+
 	//session's max_execution_time has been set before
 	err = cc.handleQuery(context.Background(), "select  * FROM tidb;")
 	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
@@ -266,8 +254,5 @@ func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100)*/ * FROM tidb;")
 	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
 
-	c.Assert(execStmt(c, se, "commit;"), IsNil)
-
 	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/SleepInwriteChunks"), IsNil)
-	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/SleepInwriteChunksWithFetchSize"), IsNil)
 }
