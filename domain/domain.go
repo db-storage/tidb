@@ -45,6 +45,7 @@ import (
 	"github.com/pingcap/tidb/store/tikv"
 	"github.com/pingcap/tidb/util"
 	"github.com/pingcap/tidb/util/logutil"
+	"github.com/pingcap/tidb/util/maxexectime"
 	"github.com/pingcap/tidb/util/sqlexec"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -54,23 +55,24 @@ import (
 // Domain represents a storage space. Different domains can use the same database name.
 // Multiple domains can be used in parallel without synchronization.
 type Domain struct {
-	store           kv.Storage
-	infoHandle      *infoschema.Handle
-	privHandle      *privileges.Handle
-	bindHandle      *bindinfo.BindHandle
-	statsHandle     unsafe.Pointer
-	statsLease      time.Duration
-	statsUpdating   sync2.AtomicInt32
-	ddl             ddl.DDL
-	info            *InfoSyncer
-	m               sync.Mutex
-	SchemaValidator SchemaValidator
-	sysSessionPool  *sessionPool
-	exit            chan struct{}
-	etcdClient      *clientv3.Client
-	wg              sync.WaitGroup
-	gvc             GlobalVariableCache
-	slowQuery       *topNSlowQueries
+	store              kv.Storage
+	infoHandle         *infoschema.Handle
+	privHandle         *privileges.Handle
+	bindHandle         *bindinfo.BindHandle
+	statsHandle        unsafe.Pointer
+	statsLease         time.Duration
+	statsUpdating      sync2.AtomicInt32
+	ddl                ddl.DDL
+	info               *InfoSyncer
+	m                  sync.Mutex
+	SchemaValidator    SchemaValidator
+	sysSessionPool     *sessionPool
+	exit               chan struct{}
+	etcdClient         *clientv3.Client
+	wg                 sync.WaitGroup
+	gvc                GlobalVariableCache
+	slowQuery          *topNSlowQueries
+	maxExecTimeMonitor *maxexectime.Monitor
 }
 
 // loadInfoSchema loads infoschema at startTS into handle, usedSchemaVersion is the currently used
@@ -1024,6 +1026,16 @@ func (do *Domain) NotifyUpdatePrivilege(ctx sessionctx.Context) {
 	if err != nil {
 		logutil.Logger(context.Background()).Error("unable to update privileges", zap.Error(err))
 	}
+}
+
+// MaxExecTimeMonitor returns instance of max exec time monitor
+func (do *Domain) MaxExecTimeMonitor() *maxexectime.Monitor {
+	return do.maxExecTimeMonitor
+}
+
+// InitMaxExecTimeMonitor init the expensive query handler.
+func (do *Domain) InitMaxExecTimeMonitor(sctx sessionctx.Context) {
+	do.maxExecTimeMonitor = maxexectime.NewMaxExecTimeMonitor(sctx, do.exit)
 }
 
 func recoverInDomain(funcName string, quit bool) {

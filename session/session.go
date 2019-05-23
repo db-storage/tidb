@@ -1525,6 +1525,11 @@ func BootstrapSession(store kv.Storage) (*domain.Domain, error) {
 		return nil, err
 	}
 
+	seExecTimeHandle, err := createSession(store)
+	if err != nil {
+		return nil, err
+	}
+	dom.InitMaxExecTimeMonitor(seExecTimeHandle)
 	if raw, ok := store.(tikv.EtcdBackend); ok {
 		err = raw.StartGCWorker()
 		if err != nil {

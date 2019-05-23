@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 
 	. "github.com/pingcap/check"
 	"github.com/pingcap/errors"
@@ -28,6 +29,7 @@ import (
 	"github.com/pingcap/tidb/session"
 	"github.com/pingcap/tidb/store/mockstore"
 	"github.com/pingcap/tidb/util/arena"
+	"github.com/pingcap/tidb/util/logutil"
 )
 
 type ConnTestSuite struct {
@@ -212,11 +214,17 @@ func mapBelong(m1, m2 map[string]string) bool {
 }
 
 func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
+	//Inject 200ms delay before each call of Next()
+	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunks", "return(1)"), IsNil)
+	//There is no underlying netCon, use failpoint to avoid panic
+	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/FakeClientConn", "return(1)"), IsNil)
+
 	c.Parallel()
 	var err error
 	ts.store, err = mockstore.NewMockTikvStore()
 	c.Assert(err, IsNil)
 	ts.dom, err = session.BootstrapSession(ts.store)
+	go ts.dom.MaxExecTimeMonitor().Run()
 	c.Assert(err, IsNil)
 	se, err := session.CreateSession4Test(ts.store)
 	c.Assert(err, IsNil)
@@ -233,46 +241,37 @@ func (ts ConnTestSuite) TestConnExecutionTimeout(c *C) {
 		ctx:   tc,
 		alloc: arena.NewAllocator(32 * 1024),
 	}
-	//Inject 200ms delay before each call of Next()
-	c.Assert(failpoint.Enable("github.com/pingcap/tidb/server/SleepInwriteChunks", "return(200)"), IsNil)
 
 	//handleQuery will WriteOK even there is no data output, which may cause panic in packetIO.writePacket
 	_, err = se.Execute(context.Background(), "use mysql;")
 	c.Assert(err, IsNil)
-
-	_, err = se.Execute(context.Background(), "select  * FROM tidb;")
+	_, err = se.Execute(context.Background(), "CREATE TABLE test2 (id bigint PRIMARY KEY,  age int)")
+	for i := 0; i < 100000; i++ {
+		str := fmt.Sprintf("insert into test2 values(%d, %d)", i, i%80)
+		_, err = se.Execute(context.Background(), str)
+		c.Assert(err, IsNil)
+	}
+	_, err = se.Execute(context.Background(), "select  * FROM test2;")
 	c.Assert(err, IsNil)
 
-	_, err = se.Execute(context.Background(), "select  * FROM tidb;")
-	c.Assert(err, IsNil)
-
+	//100ms
 	_, err = se.Execute(context.Background(), "set @@max_execution_time = 100;")
 	c.Assert(err, IsNil)
 
-	//session's max_execution_time has been set before
-	err = cc.handleQuery(context.Background(), "select  * FROM tidb;")
+	err = cc.handleQuery(context.Background(), "select  * FROM test2;")
+	c.Assert(err, NotNil)
 	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
 
-	_, err = se.Execute(context.Background(), "set @@max_execution_time = 100;")
+	_, err = se.Execute(context.Background(), "set @@max_execution_time = 0;")
 	c.Assert(err, IsNil)
 
-	//session's max_execution_time has been set before
-	err = cc.handleQuery(context.Background(), "select  * FROM tidb;")
-	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
-
-	_, err = se.Execute(context.Background(), "select  * FROM tidb;")
+	err = cc.handleQuery(context.Background(), "select  * FROM test2;")
 	c.Assert(err, IsNil)
 
-	_, err = se.Execute(context.Background(), "set @@max_execution_time = 100;")
-	c.Assert(err, IsNil)
-
-	//session's max_execution_time has been set before
-	err = cc.handleQuery(context.Background(), "select  * FROM tidb;")
-	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
-
-	//Catch error returned by handleQuery, execStmt won't return the error we wanted(prepared stmt)
-	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100)*/ * FROM tidb;")
+	err = cc.handleQuery(context.Background(), "select /*+ MAX_EXECUTION_TIME(100)*/ * FROM test2;")
+	c.Assert(err, NotNil)
 	c.Assert(err.Error(), Equals, errors.New("Query execution was interrupted, max_execution_time exceeded").Error())
 
 	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/SleepInwriteChunks"), IsNil)
+	c.Assert(failpoint.Disable("github.com/pingcap/tidb/server/FakeClientConn"), IsNil)
 }

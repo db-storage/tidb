@@ -55,6 +55,7 @@ import (
 	"github.com/pingcap/parser/auth"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/parser/terror"
+	"github.com/pingcap/tidb/domain"
 	"github.com/pingcap/tidb/executor"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/metrics"
@@ -65,6 +66,7 @@ import (
 	"github.com/pingcap/tidb/util/chunk"
 	"github.com/pingcap/tidb/util/hack"
 	"github.com/pingcap/tidb/util/logutil"
+	"github.com/pingcap/tidb/util/maxexectime"
 	"github.com/pingcap/tidb/util/memory"
 	"go.uber.org/zap"
 )
@@ -118,6 +120,9 @@ var (
 	queryDurationHistogramSet      = metrics.QueryDurationHistogram.WithLabelValues("Set")
 	queryDurationHistogramGeneral  = metrics.QueryDurationHistogram.WithLabelValues(metrics.LblGeneral)
 )
+var (
+	_ maxexectime.InterruptableQuery = &clientConn{}
+)
 
 // newClientConn creates a *clientConn object.
 func newClientConn(s *Server) *clientConn {
@@ -151,12 +156,15 @@ type clientConn struct {
 	peerHost     string            // peer host
 	peerPort     string            // peer port
 	lastCode     uint16            // last error code
+	timedOut     int32             //max_execution_time execeeded
 
 	// mu is used for cancelling the execution of current transaction.
 	mu struct {
 		sync.RWMutex
 		cancelFunc context.CancelFunc
 		resultSets []ResultSet
+		//Used for nomintoring max execution time, set only if there is a result set to be monitored
+		monitoredResultSet *ResultSet
 	}
 }
 
@@ -271,6 +279,13 @@ func (cc *clientConn) readPacket() ([]byte, error) {
 }
 
 func (cc *clientConn) writePacket(data []byte) error {
+	//time.Sleep(1 * time.Microsecond)
+	failpoint.Inject("FakeClientConn", func() {
+		if cc.pkt == nil {
+			failpoint.Return(nil)
+		}
+		logutil.Logger(context.Background()).Info("cc.pkg not nil")
+	})
 	return cc.pkt.writePacket(data)
 }
 
@@ -937,10 +952,16 @@ func (cc *clientConn) useDB(ctx context.Context, db string) (err error) {
 }
 
 func (cc *clientConn) flush() error {
+	failpoint.Inject("FakeClientConn", func() {
+		if cc.pkt == nil {
+			failpoint.Return(nil)
+		}
+	})
 	return cc.pkt.flush()
 }
 
 func (cc *clientConn) writeOK() error {
+
 	msg := cc.ctx.LastMessage()
 	enclen := 0
 	if len(msg) > 0 {
@@ -1006,6 +1027,8 @@ func (cc *clientConn) writeError(e error) error {
 // serverStatus, a flag bit represents server information
 // in the packet.
 func (cc *clientConn) writeEOF(serverStatus uint16) error {
+	str := fmt.Sprintf("writeEOF clientConn:%p, pkg:%p", cc, cc.pkt)
+	logutil.Logger(context.Background()).Info(str)
 	data := cc.alloc.AllocWithLen(4, 9)
 
 	data = append(data, mysql.EOFHeader)
@@ -1167,6 +1190,7 @@ func (cc *clientConn) handleLoadStats(ctx context.Context, loadStatsInfo *execut
 // There is a special query `load data` that does not return result, which is handled differently.
 // Query `load stats` does not return result either.
 func (cc *clientConn) handleQuery(ctx context.Context, sql string) (err error) {
+	atomic.StoreInt32(&cc.timedOut, 0)
 	rs, err := cc.ctx.Execute(ctx, sql)
 	if err != nil {
 		metrics.ExecuteErrorCounter.WithLabelValues(metrics.ExecuteErrorToLabel(err)).Inc()
@@ -1238,12 +1262,50 @@ func (cc *clientConn) handleFieldList(sql string) (err error) {
 	return cc.flush()
 }
 
+func (cc *clientConn) TrySetRsultSetTimer(rs ResultSet) error {
+	if rs.MaxExecDuration() > 0 {
+		now := time.Now()
+		if now.After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
+			cc.SetTimedOut()
+			return errors.New("Query execution was interrupted, max_execution_time exceeded")
+		}
+
+		tidbCtx, ok := cc.ctx.(*TiDBContext)
+		if !ok {
+			return nil
+		}
+		cc.setMonitoredResultSet(&rs)
+		monitor := domain.GetDomain(tidbCtx.session).MaxExecTimeMonitor()
+		err := monitor.AddQuery(cc)
+		if err != nil {
+			cc.clearMonitoredResultSet()
+			return errors.Trace(err)
+		}
+
+		logutil.Logger(context.Background()).Info("add to monitor ok")
+		return nil
+	}
+	logutil.Logger(context.Background()).Info("not set timer", zap.Int64("nano:", rs.MaxExecDuration().Nanoseconds()))
+
+	return nil
+}
+
 // writeResultset writes data into a resultset and uses rs.Next to get row data back.
 // If binary is true, the data would be encoded in BINARY format.
 // serverStatus, a flag bit represents server information.
 // fetchSize, the desired number of rows to be fetched each time when client uses cursor.
 // resultsets, it's used to support the MULTI_RESULTS capability in mysql protocol.
 func (cc *clientConn) writeResultset(ctx context.Context, rs ResultSet, binary bool, serverStatus uint16, fetchSize int) (runErr error) {
+
+	err := cc.TrySetRsultSetTimer(rs)
+	if err != nil {
+		logutil.Logger(ctx).Info("try set timer for result set failed")
+		return errors.Trace(err)
+	}
+	//TODO: defer RemoveQuery
+	//defer timer.Stop()
+	cc.clearMonitoredResultSet()
+
 	defer func() {
 		// close ResultSet when cursor doesn't exist
 		if !mysql.HasCursorExistsFlag(serverStatus) {
@@ -1263,15 +1325,21 @@ func (cc *clientConn) writeResultset(ctx context.Context, rs ResultSet, binary b
 		buf = buf[:stackSize]
 		logutil.Logger(ctx).Error("write query result panic", zap.String("lastCmd", cc.lastCmd), zap.String("stack", string(buf)))
 	}()
-	var err error
+	//var err error
 	if mysql.HasCursorExistsFlag(serverStatus) {
 		err = cc.writeChunksWithFetchSize(ctx, rs, serverStatus, fetchSize)
 	} else {
 		err = cc.writeChunks(ctx, rs, binary, serverStatus)
 	}
 	if err != nil {
+		logutil.Logger(ctx).Info("return err after WriteChunks")
 		return err
 	}
+	if atomic.LoadInt32(&cc.timedOut) > 0 {
+		logutil.Logger(ctx).Info("return 1907, timed out")
+		return errors.New("Query execution was interrupted, max_execution_time exceeded")
+	}
+
 	return cc.flush()
 }
 
@@ -1301,12 +1369,8 @@ func (cc *clientConn) writeChunks(ctx context.Context, rs ResultSet, binary bool
 	for {
 		failpoint.Inject("SleepInwriteChunks", func(val failpoint.Value) {
 			time.Sleep(time.Duration(val.(int)) * time.Millisecond)
+			logutil.Logger(context.Background()).Info("sleep done")
 		})
-		//MaxExecDuration() return 0 if there is no limit
-		if rs.MaxExecDuration().Nanoseconds() > 0 &&
-			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
-			return errors.New("Query execution was interrupted, max_execution_time exceeded")
-		}
 
 		// Here server.tidbResultSet implements Next method.
 		err := rs.Next(ctx, req)
@@ -1355,11 +1419,6 @@ func (cc *clientConn) writeChunksWithFetchSize(ctx context.Context, rs ResultSet
 	// if fetchedRows is not enough, getting data from recordSet.
 	req := rs.NewRecordBatch()
 	for len(fetchedRows) < fetchSize {
-		if rs.MaxExecDuration().Nanoseconds() > 0 &&
-			time.Now().After(rs.StartExecTime().Add(rs.MaxExecDuration())) {
-			return errors.New("Query execution was interrupted, max_execution_time exceeded")
-		}
-
 		// Here server.tidbResultSet implements Next method.
 		err := rs.Next(ctx, req)
 		if err != nil {
@@ -1481,4 +1540,69 @@ func (cc *clientConn) handleChangeUser(ctx context.Context, data []byte) error {
 	}
 
 	return cc.writeOK()
+}
+
+func (cc *clientConn) setMonitoredResultSet(rs *ResultSet) {
+	cc.mu.Lock()
+	cc.mu.monitoredResultSet = rs
+	cc.mu.Unlock()
+}
+
+func (cc *clientConn) clearMonitoredResultSet() {
+	cc.mu.Lock()
+	cc.mu.monitoredResultSet = nil
+	cc.mu.Unlock()
+}
+
+func (cc *clientConn) ClearTimedOut() {
+	atomic.StoreInt32(&cc.timedOut, 0)
+}
+
+func (cc *clientConn) SetTimedOut() {
+	atomic.StoreInt32(&cc.timedOut, 1)
+}
+
+func (cc *clientConn) CancelOnTimeout() {
+	//similar to killConn, with double check
+	cc.mu.RLock()
+	cc.mu.RUnlock()
+	if !recordSetTimedOut(cc.mu.monitoredResultSet) {
+		cc.mu.RUnlock()
+		return
+	}
+	resultSets := cc.mu.resultSets
+	cancelFunc := cc.mu.cancelFunc
+	cc.SetTimedOut()
+
+	for _, resultSet := range resultSets {
+		// resultSet.Close() is reentrant so it's safe to kill a same connID multiple times
+		if err := resultSet.Close(); err != nil {
+			logutil.Logger(context.Background()).Error("close result set error", zap.Uint32("connID", cc.connectionID), zap.Error(err))
+		}
+	}
+	if cancelFunc != nil {
+		cancelFunc()
+	}
+	panic("haha")
+}
+
+func (cc *clientConn) QueryID() uint32 {
+	return cc.connectionID
+}
+
+func recordSetTimedOut(rs *ResultSet) bool {
+	if rs == nil || (*rs).MaxExecDuration() == 0 {
+		//No record set being monitored or
+		//max_execution_time not set
+		return false
+	}
+
+	now := time.Now()
+	return now.After((*rs).StartExecTime().Add((*rs).MaxExecDuration()))
+}
+
+func (cc *clientConn) MaxExecTimeExceeded() bool {
+	cc.mu.RLock()
+	defer cc.mu.RUnlock()
+	return recordSetTimedOut(cc.mu.monitoredResultSet)
 }
