@@ -376,10 +376,6 @@ type SessionVars struct {
 	// TxnMode indicates should be pessimistic or optimistic.
 	TxnMode string
 
-	// PessimisticLock indicates whether new transaction should be pessimistic .
-	PessimisticLock bool
-
-	MaxExecutionTime uint64
 	// LowResolutionTSO is used for reading data with low resolution TSO which is updated once every two seconds.
 	LowResolutionTSO bool
 	// PessimisticLock indicates whether new transaction should be pessimistic .
@@ -811,11 +807,8 @@ func (s *SessionVars) SetSystemVar(name string, val string) error {
 		if err := s.setTxnMode(val); err != nil {
 			return err
 		}
-<<<<<<< HEAD
 	case TiDBPessimisticLock:
 		s.PessimisticLock = TiDBOptOn(val)
-=======
->>>>>>> *: support 'tidb_txn_mode' session variable. (#10574)
 	case TiDBLowResolutionTSO:
 		s.LowResolutionTSO = TiDBOptOn(val)
 	}

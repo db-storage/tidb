@@ -125,6 +125,9 @@ const (
 	// tidb_txn_mode is used to control the transaction behavior.
 	TiDBTxnMode = "tidb_txn_mode"
 
+	// tidb_pessimistic_lock is used to control the transactin behavior.
+	TiDBPessimisticLock = "tidb_pessimistic_lock"
+
 	// tidb_enable_table_partition is used to control table partition feature.
 	// The valid value include auto/on/off:
 	// auto: enable table partition when that feature is implemented.
@@ -340,7 +343,7 @@ var (
 	maxDDLReorgWorkerCount int32 = 128
 	ddlReorgBatchSize      int32 = DefTiDBDDLReorgBatchSize
 	ddlErrorCountlimit     int64 = DefTiDBDDLErrorCountLimit
-	// Export for testing.
+	// MaxDDLReorgBatchSize Exported for testing.
 	MaxDDLReorgBatchSize int32 = 10240
 	MinDDLReorgBatchSize int32 = 32
 	// DDLSlowOprThreshold is the threshold for ddl slow operations, uint is millisecond.

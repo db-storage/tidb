@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/util/logutil"
 	"go.uber.org/zap"
 )
@@ -34,7 +33,6 @@ type InterruptableQuery interface {
 // Monitor is the object that monitors queries
 type Monitor struct {
 	mu      sync.RWMutex
-	sctx    sessionctx.Context
 	exitCh  chan struct{}
 	queries map[uint32]InterruptableQuery
 }
@@ -45,7 +43,7 @@ func (mntr *Monitor) AddQuery(query InterruptableQuery) error {
 	mntr.mu.Lock()
 	defer mntr.mu.Unlock()
 	if mntr.queries[id] != nil {
-		logutil.Logger(context.Background()).Info("duplicate query", zap.Uint32("id:", id))
+		logutil.Logger(context.Background()).Info("Duplicate query", zap.Uint32(" id:", id))
 		return errors.New("duplicate query id")
 	}
 	mntr.queries[query.QueryID()] = query
@@ -57,7 +55,7 @@ func (mntr *Monitor) RemoveQuery(query InterruptableQuery) {
 	mntr.mu.Lock()
 	defer mntr.mu.Unlock()
 	id := query.QueryID()
-	mntr.queries[id] = nil
+	delete(mntr.queries, id)
 }
 
 func (mntr *Monitor) checkAll() {
@@ -67,7 +65,7 @@ func (mntr *Monitor) checkAll() {
 
 	for _, query := range queries {
 		if query.MaxExecTimeExceeded() {
-			logutil.Logger(context.Background()).Info("cancel query")
+			logutil.Logger(context.Background()).Debug("Cancel query", zap.Uint32(" id:", query.QueryID()))
 			query.CancelOnTimeout()
 			mntr.RemoveQuery(query)
 		}
@@ -76,24 +74,21 @@ func (mntr *Monitor) checkAll() {
 
 // Run is the main func
 func (mntr *Monitor) Run() {
-	logutil.Logger(context.Background()).Info("Monitor runs")
-	//TODO: use configed param
-	ticker := time.NewTicker(time.Duration(10) * time.Millisecond)
+	logutil.Logger(context.Background()).Debug("Monitor runs")
+	ticker := time.NewTicker(10 * time.Millisecond)
 	for {
 		select {
 		case <-ticker.C:
 			mntr.checkAll()
 		case <-mntr.exitCh:
-			logutil.Logger(context.Background()).Info("Monitor exits")
 			return
 		}
 	}
 }
 
 // NewMaxExecTimeMonitor creates a Monitor
-func NewMaxExecTimeMonitor(sctx sessionctx.Context, exitCh chan struct{}) *Monitor {
+func NewMaxExecTimeMonitor(exitCh chan struct{}) *Monitor {
 	return &Monitor{
-		sctx:    sctx,
 		exitCh:  exitCh,
 		queries: make(map[uint32]InterruptableQuery),
 	}

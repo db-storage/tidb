@@ -1035,7 +1035,7 @@ func (do *Domain) MaxExecTimeMonitor() *maxexectime.Monitor {
 
 // InitMaxExecTimeMonitor init the expensive query handler.
 func (do *Domain) InitMaxExecTimeMonitor(sctx sessionctx.Context) {
-	do.maxExecTimeMonitor = maxexectime.NewMaxExecTimeMonitor(sctx, do.exit)
+	do.maxExecTimeMonitor = maxexectime.NewMaxExecTimeMonitor(do.exit)
 }
 
 func recoverInDomain(funcName string, quit bool) {

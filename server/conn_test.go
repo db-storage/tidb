@@ -29,7 +29,6 @@ import (
 	"github.com/pingcap/tidb/session"
 	"github.com/pingcap/tidb/store/mockstore"
 	"github.com/pingcap/tidb/util/arena"
-	"github.com/pingcap/tidb/util/logutil"
 )
 
 type ConnTestSuite struct {
