@@ -2637,6 +2637,7 @@ func (s *testSessionSuite) TestTxnGoString(c *C) {
 	c.Assert(fmt.Sprintf("%#v", txn), Equals, "Txn{state=invalid}")
 }
 
+
 func (s *testSessionSuite) TestMaxExeucteTime(c *C) {
 	tk := testkit.NewTestKitWithInit(c, s.store)
 
@@ -2662,6 +2663,7 @@ func (s *testSessionSuite) TestMaxExeucteTime(c *C) {
 	tk.MustExec("commit")
 	tk.MustExec("drop table if exists MaxExecTime;")
 }
+
 
 func (s *testSessionSuite) TestGrantViewRelated(c *C) {
 	tkRoot := testkit.NewTestKitWithInit(c, s.store)

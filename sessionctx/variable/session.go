@@ -378,10 +378,12 @@ type SessionVars struct {
 
 	// LowResolutionTSO is used for reading data with low resolution TSO which is updated once every two seconds.
 	LowResolutionTSO bool
+
 	// PessimisticLock indicates whether new transaction should be pessimistic .
 	PessimisticLock bool
 
 	MaxExecutionTime uint64
+
 }
 
 // ConnectionInfo present connection used by audit.
