@@ -27,7 +27,7 @@ import (
 // Optimize does optimization and creates a Plan.
 // The node must be prepared first.
 func Optimize(ctx context.Context, sctx sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (plannercore.Plan, error) {
-	fp := plannercore.TryFastPlan(sctx, node)
+	fp := plannercore.TryFastPlan(sctx, node) //DHQ: 在Build之前就先调用了
 	if fp != nil {
 		return fp, nil
 	}

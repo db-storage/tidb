@@ -48,16 +48,17 @@ func addSelection(p LogicalPlan, child LogicalPlan, conditions []expression.Expr
 }
 
 // PredicatePushDown implements LogicalPlan interface.
-func (p *baseLogicalPlan) PredicatePushDown(predicates []expression.Expression) ([]expression.Expression, LogicalPlan) {
+func (p *baseLogicalPlan) PredicatePushDown(predicates []expression.Expression) ([]expression.Expression, LogicalPlan) { //DHQ: baseLogicalPlan 不是LogicalPlan,单包含一个
 	if len(p.children) == 0 {
 		return predicates, p.self
-	}
-	child := p.children[0]
+	} //DHQ: 推不下去的条件，做到一个 Selection 算子里面，然后连接在节点 p 上面，形成新的 plan。
+	child := p.children[0] //DHQ: https://zhuanlan.zhihu.com/p/35511864
 	rest, newChild := child.PredicatePushDown(predicates)
 	addSelection(p.self, newChild, rest, 0)
 	return nil, p.self
 }
 
+//DHQ: SetVar and GetVar can't be pushed down
 func splitSetGetVarFunc(filters []expression.Expression) ([]expression.Expression, []expression.Expression) {
 	canBePushDown := make([]expression.Expression, 0, len(filters))
 	canNotBePushDown := make([]expression.Expression, 0, len(filters))
@@ -92,7 +93,7 @@ func (p *LogicalSelection) PredicatePushDown(predicates []expression.Expression)
 func (p *LogicalUnionScan) PredicatePushDown(predicates []expression.Expression) ([]expression.Expression, LogicalPlan) {
 	retainedPredicates, _ := p.children[0].PredicatePushDown(predicates)
 	p.conditions = make([]expression.Expression, 0, len(predicates))
-	p.conditions = append(p.conditions, predicates...)
+	p.conditions = append(p.conditions, predicates...) //DHQ: UnionScan特殊，推下去了也不删除
 	// The conditions in UnionScan is only used for added rows, so parent Selection should not be removed.
 	return retainedPredicates, p
 }

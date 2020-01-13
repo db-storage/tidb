@@ -67,7 +67,7 @@ func enforceProperty(p *property.PhysicalProperty, tsk task, ctx sessionctx.Cont
 // We can do a lot of logical optimizations to it, like predicate pushdown and column pruning.
 type LogicalPlan interface {
 	Plan
-
+	// DHQ: PredicatePushDown 不一定是下推到cop，只是尽量往下层挪
 	// PredicatePushDown pushes down the predicates in the where/on/having clauses as deeply as possible.
 	// It will accept a predicate that is an expression slice, and return the expressions that can't be pushed.
 	// Because it might change the root if the having clause exists, we need to return a plan that represents a new root.
@@ -81,7 +81,7 @@ type LogicalPlan interface {
 	// Some logical plans will convert the children to the physical plans in different ways, and return the one
 	// with the lowest cost.
 	findBestTask(prop *property.PhysicalProperty) (task, error)
-
+	//DHQ: property包含了(来自parent的)要求，比如要返回哪些列，顺序如何，下面好做决策
 	// buildKeyInfo will collect the information of unique keys into schema.
 	buildKeyInfo()
 
@@ -99,7 +99,7 @@ type LogicalPlan interface {
 	// Please make sure that children's method is called though we may not need its return value,
 	// so we can prepare possible properties for every LogicalPlan node.
 	preparePossibleProperties() [][]*expression.Column
-
+	//DHQ: 返回的是一组候选的physical plan，外面再比较去
 	// exhaustPhysicalPlans generates all possible plans that can match the required property.
 	exhaustPhysicalPlans(*property.PhysicalProperty) []PhysicalPlan
 
@@ -159,7 +159,7 @@ type baseLogicalPlan struct {
 	basePlan
 
 	taskMap   map[string]task
-	self      LogicalPlan
+	self      LogicalPlan //DHQ: Self 可以更换？那么在物理优化时，还可以调整self?
 	maxOneRow bool
 	children  []LogicalPlan
 }
@@ -250,7 +250,7 @@ func (p *baseLogicalPlan) PruneColumns(parentUsedCols []*expression.Column) erro
 
 // basePlan implements base Plan interface.
 // Should be used as embedded struct in Plan implementations.
-type basePlan struct {
+type basePlan struct { //DHQ: 相当于公共结构，嵌入各个Plan的实现中,它本身不是某个interface的实现
 	tp    string
 	id    int
 	ctx   sessionctx.Context

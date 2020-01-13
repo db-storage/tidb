@@ -77,6 +77,7 @@ func (p *LogicalTableDual) findBestTask(prop *property.PhysicalProperty) (task, 
 	return &rootTask{p: dual}, nil
 }
 
+// DHQ: 为什么exhaustPhysicalPlans 没exhaustPhysicalPlans，却有findBestTask? => 调用的是p.self的exhaustPhysicalPlans
 // findBestTask implements LogicalPlan interface.
 func (p *baseLogicalPlan) findBestTask(prop *property.PhysicalProperty) (bestTask task, err error) {
 	// If p is an inner plan in an IndexJoin, the IndexJoin will generate an inner plan by itself,
@@ -120,7 +121,7 @@ func (p *baseLogicalPlan) findBestTask(prop *property.PhysicalProperty) (bestTas
 	for _, pp := range physicalPlans {
 		// find best child tasks firstly.
 		childTasks = childTasks[:0]
-		for i, child := range p.children {
+		for i, child := range p.children { //DHQ:每个候选的plan，有多个children
 			childTask, err := child.findBestTask(pp.GetChildReqProps(i))
 			if err != nil {
 				return nil, err
@@ -355,6 +356,7 @@ func (ds *DataSource) skylinePruning(prop *property.PhysicalProperty) []*candida
 	return candidates
 }
 
+//DHQ: 只有DataSource和TableDual有自己的findBestTask，其他都用baseLogicalPlan的。因为都是纯计算，没有cost可比?
 // findBestTask implements the PhysicalPlan interface.
 // It will enumerate all the available indices and choose a plan with least cost.
 func (ds *DataSource) findBestTask(prop *property.PhysicalProperty) (t task, err error) {
@@ -364,8 +366,8 @@ func (ds *DataSource) findBestTask(prop *property.PhysicalProperty) (t task, err
 		return nil, nil
 	}
 
-	t = ds.getTask(prop)
-	if t != nil {
+	t = ds.getTask(prop) //DHQ:调用的是basicLogicalPlan的成员函数
+	if t != nil {        //DHQ: 已有了task，即计算完成了
 		return
 	}
 
@@ -375,12 +377,12 @@ func (ds *DataSource) findBestTask(prop *property.PhysicalProperty) (t task, err
 	if prop.Enforced {
 		// First, get the bestTask without enforced prop
 		prop.Enforced = false
-		t, err = ds.findBestTask(prop)
+		t, err = ds.findBestTask(prop) //DHQ: 递归调用本函数，就是更改了prop？什么含义？因为prop里面的东西需要保留？
 		if err != nil {
 			return nil, err
 		}
 		prop.Enforced = true
-		if t != invalidTask {
+		if t != invalidTask { //DHQ: done
 			ds.storeTask(prop, t)
 			return
 		}
@@ -416,16 +418,16 @@ func (ds *DataSource) findBestTask(prop *property.PhysicalProperty) (t task, err
 		if len(path.ranges) == 0 && !ds.ctx.GetSessionVars().StmtCtx.UseCache {
 			dual := PhysicalTableDual{}.Init(ds.ctx, ds.stats)
 			dual.SetSchema(ds.schema)
-			return &rootTask{
+			return &rootTask{ //DHQ: 这种直接return了
 				p: dual,
 			}, nil
 		}
-		if path.isTablePath {
+		if path.isTablePath { //DHQ: 如果是 TablePath，那么下面continue了。整体在一个循环中
 			tblTask, err := ds.convertToTableScan(prop, candidate)
 			if err != nil {
 				return nil, err
 			}
-			if tblTask.cost() < t.cost() {
+			if tblTask.cost() < t.cost() { //DHQ: 比较cost，t 最小化
 				t = tblTask
 			}
 			continue
@@ -434,7 +436,7 @@ func (ds *DataSource) findBestTask(prop *property.PhysicalProperty) (t task, err
 		if err != nil {
 			return nil, err
 		}
-		if idxTask.cost() < t.cost() {
+		if idxTask.cost() < t.cost() { //DHQ: 比较cost，t 最小化
 			t = idxTask
 		}
 	}

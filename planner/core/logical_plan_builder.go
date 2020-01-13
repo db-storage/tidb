@@ -43,7 +43,7 @@ import (
 	"github.com/pingcap/tidb/table"
 	"github.com/pingcap/tidb/table/tables"
 	"github.com/pingcap/tidb/types"
-	"github.com/pingcap/tidb/types/parser_driver"
+	driver "github.com/pingcap/tidb/types/parser_driver"
 	"github.com/pingcap/tidb/util/chunk"
 	"github.com/pingcap/tidb/util/plancodec"
 )
@@ -90,7 +90,7 @@ func (b *PlanBuilder) buildAggregation(ctx context.Context, p LogicalPlan, aggFu
 	// aggIdxMap maps the old index to new index after applying common aggregation functions elimination.
 	aggIndexMap := make(map[int]int)
 
-	for i, aggFunc := range aggFuncList {
+	for i, aggFunc := range aggFuncList { //DHQ: aggFunc转换成expr
 		newArgList := make([]expression.Expression, 0, len(aggFunc.Args))
 		for _, arg := range aggFunc.Args {
 			newArg, np, err := b.rewrite(ctx, arg, p, nil, true)
@@ -141,6 +141,7 @@ func (b *PlanBuilder) buildAggregation(ctx context.Context, p LogicalPlan, aggFu
 	return plan4Agg, aggIndexMap, nil
 }
 
+//DHQ: ResultSetNode，应该是会返回结果集的那种，即只读操作
 func (b *PlanBuilder) buildResultSetNode(ctx context.Context, node ast.ResultSetNode) (p LogicalPlan, err error) {
 	switch x := node.(type) {
 	case *ast.Join:
@@ -380,7 +381,7 @@ func (b *PlanBuilder) buildJoin(ctx context.Context, joinNode *ast.Join) (Logica
 	}
 
 	b.optFlag = b.optFlag | flagPredicatePushDown
-
+	//DHQ: Left和Right都是返回结果集的
 	leftPlan, err := b.buildResultSetNode(ctx, joinNode.Left)
 	if err != nil {
 		return nil, err
@@ -560,6 +561,7 @@ func (b *PlanBuilder) coalesceCommonColumns(p *LogicalJoin, leftPlan, rightPlan 
 	return nil
 }
 
+//DHQ: Selection是过滤条件，buildSelect才是真正的select语句对应
 func (b *PlanBuilder) buildSelection(ctx context.Context, p LogicalPlan, where ast.ExprNode, AggMapper map[*ast.AggregateFuncExpr]int) (LogicalPlan, error) {
 	b.optFlag = b.optFlag | flagPredicatePushDown
 	if b.curClause != havingClause {
@@ -569,20 +571,20 @@ func (b *PlanBuilder) buildSelection(ctx context.Context, p LogicalPlan, where a
 	conditions := splitWhere(where)
 	expressions := make([]expression.Expression, 0, len(conditions))
 	selection := LogicalSelection{}.Init(b.ctx)
-	for _, cond := range conditions {
-		expr, np, err := b.rewrite(ctx, cond, p, AggMapper, false)
+	for _, cond := range conditions { //DHQ:conditions之间是AND关系
+		expr, np, err := b.rewrite(ctx, cond, p, AggMapper, false) //DHQ: cond转换成expr
 		if err != nil {
 			return nil, err
 		}
-		p = np
+		p = np //DHQ: rewrite可能修改了plan
 		if expr == nil {
 			continue
 		}
-		cnfItems := expression.SplitCNFItems(expr)
+		cnfItems := expression.SplitCNFItems(expr) //DHQ:CNF是Conjunction(AND)，这个是expr内部的，不是cond之间的AND
 		for _, item := range cnfItems {
 			if con, ok := item.(*expression.Constant); ok && con.DeferredExpr == nil {
 				ret, _, err := expression.EvalBool(b.ctx, expression.CNFExprs{con}, chunk.Row{})
-				if err != nil || ret {
+				if err != nil || ret { //DHQ:因为是AND，true的const，也直接跳过,但是跳过err比较奇怪
 					continue
 				}
 				// If there is condition which is always false, return dual plan directly.
@@ -2010,7 +2012,7 @@ func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p L
 		gbyCols                       []expression.Expression
 	)
 
-	if sel.From != nil {
+	if sel.From != nil { //DHQ: 这里面会处理Join, 参数是From.TableRefs，实际上是啥？
 		p, err = b.buildResultSetNode(ctx, sel.From.TableRefs)
 		if err != nil {
 			return nil, err
@@ -2054,7 +2056,7 @@ func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p L
 		return nil, err
 	}
 
-	if sel.Where != nil {
+	if sel.Where != nil { //DHQ: select xx from t1, t2 where t1.c = t2.c这种，Where是啥？Selection的child是Join?
 		p, err = b.buildSelection(ctx, p, sel.Where, nil)
 		if err != nil {
 			return nil, err
@@ -2242,7 +2244,7 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName) (L
 	} else if len(tn.PartitionNames) != 0 {
 		return nil, ErrPartitionClauseOnNonpartitioned
 	}
-
+	//DHQ: DataSource才需要这个，其他的没有类似的。path里面包含了 conditions
 	possiblePaths, err := getPossibleAccessPaths(tn.IndexHints, tableInfo)
 	if err != nil {
 		return nil, err

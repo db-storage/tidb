@@ -102,7 +102,7 @@ const (
 
 // LogicalJoin is the logical join plan.
 type LogicalJoin struct {
-	logicalSchemaProducer
+	logicalSchemaProducer //DHQ:里面也有 baseLogicalPlan
 
 	JoinType      JoinType
 	reordered     bool
@@ -208,7 +208,7 @@ func (p *LogicalJoin) extractCorrelatedCols() []*expression.CorrelatedColumn {
 
 // LogicalProjection represents a select fields plan.
 type LogicalProjection struct {
-	logicalSchemaProducer
+	logicalSchemaProducer //DHQ: it contains baseLogicalPlan
 
 	Exprs []expression.Expression
 
@@ -335,7 +335,7 @@ type DataSource struct {
 	TableAsName *model.CIStr
 
 	// pushedDownConds are the conditions that will be pushed down to coprocessor.
-	pushedDownConds []expression.Expression
+	pushedDownConds []expression.Expression //DHQ: 这里面实际上已经把conds传递下来了，不是在单独的plan中。
 	// allConds contains all the filters on this table. For now it's maintained
 	// in predicate push down and used only in partition pruning.
 	allConds []expression.Expression
@@ -344,7 +344,7 @@ type DataSource struct {
 	tableStats     *property.StatsInfo
 
 	// possibleAccessPaths stores all the possible access path for physical plan, including table scan.
-	possibleAccessPaths []*accessPath
+	possibleAccessPaths []*accessPath //DHQ: 对于同样的cond，indexScan和TableScan里面的cond，应该也不是相同的表达式
 
 	// The data source may be a partition, rather than a real table.
 	isPartition     bool

@@ -1196,6 +1196,7 @@ func buildColumn(tableName, name string, tp byte, size int) *expression.Column {
 	}
 }
 
+//DHQ: 对于OR，直接作为整体放进去。只有AND的式子，拆开
 // splitWhere split a where expression to a list of AND conditions.
 func splitWhere(where ast.ExprNode) []ast.ExprNode {
 	var conditions []ast.ExprNode
@@ -1724,7 +1725,7 @@ func (b *PlanBuilder) buildSelectPlanOfInsert(ctx context.Context, insert *ast.I
 			return ErrBadGeneratedColumn.GenWithStackByArgs(col.Name.O, insertPlan.Table.Meta().Name.O)
 		}
 	}
-
+	//DHQ: 直接调用DoOptimize，insert/delete/update的场景。如果是Select，应该不是在里面调用
 	insertPlan.SelectPlan, err = DoOptimize(ctx, b.optFlag, selectPlan.(LogicalPlan))
 	if err != nil {
 		return err

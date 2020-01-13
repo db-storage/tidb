@@ -97,7 +97,7 @@ func (e *PointGetExecutor) Next(ctx context.Context, req *chunk.Chunk) error {
 			return err1
 		}
 
-		handleVal, err1 := e.get(idxKey)
+		handleVal, err1 := e.get(idxKey) //DHQ: have index, get index first(maybe from k/v)
 		if err1 != nil && !kv.ErrNotExist.Equal(err1) {
 			return err1
 		}
@@ -125,7 +125,7 @@ func (e *PointGetExecutor) Next(ctx context.Context, req *chunk.Chunk) error {
 	}
 
 	key := tablecodec.EncodeRowKeyWithHandle(e.tblInfo.ID, e.handle)
-	val, err := e.get(key)
+	val, err := e.get(key) //DHQ: get row key(maybe from k/v)
 	if err != nil && !kv.ErrNotExist.Equal(err) {
 		return err
 	}

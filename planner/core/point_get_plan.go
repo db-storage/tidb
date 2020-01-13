@@ -188,8 +188,8 @@ func tryPointGetPlan(ctx sessionctx.Context, selStmt *ast.SelectStmt) *PointGetP
 		if err != nil || count == 0 || offset > 0 {
 			return nil
 		}
-	}
-	tblName, tblAlias := getSingleTableNameAndAlias(selStmt.From)
+	} //DHQ: 与IsPointGetWithPKOrUniqueKeyByAutoCommit不同，可以用index(两次读）,只要结果是一行
+	tblName, tblAlias := getSingleTableNameAndAlias(selStmt.From) //DHQ: tblName:AST Node, not a string
 	if tblName == nil {
 		return nil
 	}
@@ -219,7 +219,7 @@ func tryPointGetPlan(ctx sessionctx.Context, selStmt *ast.SelectStmt) *PointGetP
 	if pairs == nil {
 		return nil
 	}
-	handlePair, fieldType := findPKHandle(tbl, pairs)
+	handlePair, fieldType := findPKHandle(tbl, pairs) //DHQ: 条件包含了PKHandle
 	if handlePair.value.Kind() != types.KindNull && len(pairs) == 1 {
 		schema := buildSchemaFromFields(ctx, tblName.Schema, tbl, tblAlias, selStmt.Fields.Fields)
 		if schema == nil {
@@ -514,7 +514,7 @@ func tryUpdatePointPlan(ctx sessionctx.Context, updateStmt *ast.UpdateStmt) Plan
 	return updatePlan
 }
 
-func buildOrderedList(ctx sessionctx.Context, fastSelect *PointGetPlan, list []*ast.Assignment) []*expression.Assignment {
+func buildOrderedList(ctx sessionctx.Context, fastSelect *PointGetPlan, list []*ast.Assignment) []*expression.Assignment { //DHQ: ast.Assignment => expression.AssignMent
 	orderedList := make([]*expression.Assignment, 0, len(list))
 	for _, assign := range list {
 		col, err := fastSelect.schema.FindColumn(assign.Column)
@@ -531,7 +531,7 @@ func buildOrderedList(ctx sessionctx.Context, fastSelect *PointGetPlan, list []*
 		if err != nil {
 			return nil
 		}
-		expr = expression.BuildCastFunction(ctx, expr, col.GetType())
+		expr = expression.BuildCastFunction(ctx, expr, col.GetType()) //DHQ: when does it need a cast?
 		newAssign.Expr, err = expr.ResolveIndices(fastSelect.schema)
 		if err != nil {
 			return nil
