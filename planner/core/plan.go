@@ -54,7 +54,7 @@ func enforceProperty(p *property.PhysicalProperty, tsk task, ctx sessionctx.Cont
 	if p.IsEmpty() || tsk.plan() == nil {
 		return tsk
 	}
-	tsk = finishCopTask(ctx, tsk)
+	tsk = finishCopTask(ctx, tsk) //DHQ: 这个enfoce带来的task，一定是root的？已经finishcopTask了
 	sortReqProp := &property.PhysicalProperty{TaskTp: property.RootTaskType, Items: p.Items, ExpectedCnt: math.MaxFloat64}
 	sort := PhysicalSort{ByItems: make([]*ByItems, 0, len(p.Items))}.Init(ctx, tsk.plan().statsInfo(), sortReqProp)
 	for _, col := range p.Items {

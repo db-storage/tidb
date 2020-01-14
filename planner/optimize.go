@@ -66,7 +66,7 @@ func Optimize(ctx context.Context, sctx sessionctx.Context, node ast.Node, is in
 
 	// Handle the logical plan statement, use cascades planner if enabled.
 	if sctx.GetSessionVars().EnableCascadesPlanner {
-		return cascades.FindBestPlan(sctx, logic)
+		return cascades.FindBestPlan(sctx, logic) //DHQ: Cascade才使用的
 	}
 	return plannercore.DoOptimize(ctx, builder.GetOptFlag(), logic)
 }

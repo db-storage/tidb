@@ -1131,6 +1131,7 @@ func matchItems(p *property.PhysicalProperty, items []*ByItems) bool {
 	return true
 }
 
+//DHQ: 返回nil时 caller怎么处理？
 func (lt *LogicalTopN) exhaustPhysicalPlans(prop *property.PhysicalProperty) []PhysicalPlan {
 	if matchItems(prop, lt.ByItems) {
 		return append(lt.getPhysTopN(), lt.getPhysLimits()...)

@@ -77,7 +77,7 @@ func (p *LogicalTableDual) findBestTask(prop *property.PhysicalProperty) (task, 
 	return &rootTask{p: dual}, nil
 }
 
-// DHQ: 为什么exhaustPhysicalPlans 没exhaustPhysicalPlans，却有findBestTask? => 调用的是p.self的exhaustPhysicalPlans
+// DHQ: 为什么 exhaustPhysicalPlans 没调用 exhaustPhysicalPlans，却有findBestTask? => 调用的是p.self的exhaustPhysicalPlans
 // findBestTask implements LogicalPlan interface.
 func (p *baseLogicalPlan) findBestTask(prop *property.PhysicalProperty) (bestTask task, err error) {
 	// If p is an inner plan in an IndexJoin, the IndexJoin will generate an inner plan by itself,
@@ -87,12 +87,12 @@ func (p *baseLogicalPlan) findBestTask(prop *property.PhysicalProperty) (bestTas
 	}
 	// Look up the task with this prop in the task map.
 	// It's used to reduce double counting.
-	bestTask = p.getTask(prop)
+	bestTask = p.getTask(prop) //DHQ: 同一个baseLogicalPlan, 同一个prop，bestTask无需重复计算
 	if bestTask != nil {
 		return bestTask, nil
 	}
 
-	if prop.TaskTp != property.RootTaskType {
+	if prop.TaskTp != property.RootTaskType { //DHQ: prop的TaskTp，不是bestTask的
 		// Currently all plan cannot totally push down.
 		p.storeTask(prop, invalidTask)
 		return invalidTask, nil
@@ -104,24 +104,24 @@ func (p *baseLogicalPlan) findBestTask(prop *property.PhysicalProperty) (bestTas
 	// If prop.enforced is true, cols of prop as parameter in exhaustPhysicalPlans should be nil
 	// And reset it for enforcing task prop and storing map<prop,task>
 	oldPropCols := prop.Items
-	if prop.Enforced {
+	if prop.Enforced { //DHQ: 只有极少数地方，调用 NewPhysicalProperty 时，设置了 Enforced:true。enforce: 强制加上 sort
 		// First, get the bestTask without enforced prop
-		prop.Enforced = false
+		prop.Enforced = false //DHQ： 这个设置，影响下面循环里面调用 enforceProperty
 		bestTask, err = p.findBestTask(prop)
 		if err != nil {
 			return nil, err
 		}
 		prop.Enforced = true
 		// Next, get the bestTask with enforced prop
-		prop.Items = []property.Item{}
+		prop.Items = []property.Item{} //这里清楚了一把，下面再赋值回去？
 	}
-	physicalPlans := p.self.exhaustPhysicalPlans(prop)
-	prop.Items = oldPropCols
+	physicalPlans := p.self.exhaustPhysicalPlans(prop) //DHQ: 差别是，exhaustPhysicalPlans 调用时，prop.Items是否为空
+	prop.Items = oldPropCols                           //DHQ: 为什么需要恢复？哪里修改了？
 
 	for _, pp := range physicalPlans {
 		// find best child tasks firstly.
 		childTasks = childTasks[:0]
-		for i, child := range p.children { //DHQ:每个候选的plan，有多个children
+		for i, child := range p.children { //DHQ:每个候选的plan，可能有有多个children(实际上也就是DataSource有多个)
 			childTask, err := child.findBestTask(pp.GetChildReqProps(i))
 			if err != nil {
 				return nil, err
@@ -141,7 +141,7 @@ func (p *baseLogicalPlan) findBestTask(prop *property.PhysicalProperty) (bestTas
 		curTask := pp.attach2Task(childTasks...)
 
 		// enforce curTask property
-		if prop.Enforced {
+		if prop.Enforced { //DHQ: 第一轮，先设置Enforced=false调用，不走下面这个enforceProperty，有啥意义？
 			curTask = enforceProperty(prop, curTask, p.basePlan.ctx)
 		}
 
@@ -151,7 +151,7 @@ func (p *baseLogicalPlan) findBestTask(prop *property.PhysicalProperty) (bestTas
 		}
 	}
 
-	p.storeTask(prop, bestTask)
+	p.storeTask(prop, bestTask) //DHQ: 与getTask对应的map操作，Enforced为true和false实际上是两个prop，因此可能插入了两个？
 	return bestTask, nil
 }
 

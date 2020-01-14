@@ -29,7 +29,7 @@ type Item struct {
 // PhysicalProperty stands for the required physical property by parents.
 // It contains the orders and the task types.
 type PhysicalProperty struct {
-	Items []Item
+	Items []Item //DHQ: Item不是说要哪些列，而是说，按照哪些列sort? 没有需要sort的，items就是nil
 
 	// TaskTp means the type of task that an operator requires.
 	//
