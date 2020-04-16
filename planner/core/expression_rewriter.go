@@ -780,6 +780,7 @@ func (er *expressionRewriter) handleInSubquery(ctx context.Context, v *ast.Patte
 	return v, true
 }
 
+// DHQ: 如果自查询实际上是非关联的，直接在这里执行，获得结果。https://pingcap.com/blog-cn/tidb-source-code-reading-21/
 func (er *expressionRewriter) handleScalarSubquery(ctx context.Context, v *ast.SubqueryExpr) (ast.Node, bool) {
 	np, err := er.buildSubquery(ctx, v)
 	if err != nil {

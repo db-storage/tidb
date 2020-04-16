@@ -356,7 +356,8 @@ func (ds *DataSource) skylinePruning(prop *property.PhysicalProperty) []*candida
 	return candidates
 }
 
-//DHQ: 只有DataSource和TableDual有自己的findBestTask，其他都用baseLogicalPlan的。因为都是纯计算，没有cost可比?
+// DHQ: DataSource 没有 exhaustPhysicalPlans，直接产生 task
+// 只有DataSource和TableDual有自己的 findBestTask，其他都用baseLogicalPlan的。因为都是纯计算，没有cost可比?
 // findBestTask implements the PhysicalPlan interface.
 // It will enumerate all the available indices and choose a plan with least cost.
 func (ds *DataSource) findBestTask(prop *property.PhysicalProperty) (t task, err error) {

@@ -1037,7 +1037,7 @@ func (p *LogicalJoin) exhaustPhysicalPlans(prop *property.PhysicalProperty) []Ph
 		return mergeJoins
 	}
 	joins := make([]PhysicalPlan, 0, 5)
-	joins = append(joins, mergeJoins...)
+	joins = append(joins, mergeJoins...) //DHQ: 各种Join都放列表里面，外面比较
 
 	indexJoins, forced := p.tryToGetIndexJoin(prop)
 	if forced {

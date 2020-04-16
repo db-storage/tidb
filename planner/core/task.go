@@ -195,6 +195,8 @@ func (p *PhysicalMergeJoin) attach2Task(tasks ...task) task {
 	}
 }
 
+// DHQ:来自文章：对于 Limit、TopN 以及 Aggregation 算子，当且仅当它们的子节点是 DataSource 的时候，才允许被下推。 算子下推逻辑过于简单，除了 Selection 之外只允许下推一个算子，难以应对未来添加的新的下推算子（例如 Projection 等），同时也没法针对某些特殊场景进行灵活地算子下推。
+// DHQ: 所以经常直接finishCopTask
 // finishCopTask means we close the coprocessor task and create a root task.
 func finishCopTask(ctx sessionctx.Context, task task) task {
 	t, ok := task.(*copTask)
@@ -325,7 +327,7 @@ func (p *PhysicalTopN) getCost(count float64) float64 {
 }
 
 // canPushDown checks if this topN can be pushed down. If each of the expression can be converted to pb, it can be pushed.
-func (p *PhysicalTopN) canPushDown() bool {//
+func (p *PhysicalTopN) canPushDown() bool { //
 	exprs := make([]expression.Expression, 0, len(p.ByItems))
 	for _, item := range p.ByItems {
 		exprs = append(exprs, item.Expr)
@@ -404,7 +406,7 @@ func (p *PhysicalProjection) attach2Task(tasks ...task) task {
 	return nil
 }
 
-func (p *PhysicalUnionAll) attach2Task(tasks ...task) task {
+func (p *PhysicalUnionAll) attach2Task(tasks ...task) task { //DHQ: PhysicalUnionAll的关键在这，其他地方没干啥
 	newTask := &rootTask{p: p}
 	newChildren := make([]PhysicalPlan, 0, len(p.children))
 	for _, task := range tasks {
